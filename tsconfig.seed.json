@@ -8,6 +8,6 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["prisma/seed.ts"],
+  "include": ["prisma/seed.ts", "prisma/seed-admin.ts", "scripts/*.ts"],
   "exclude": ["node_modules"]
 }
