@@ -15,6 +15,7 @@ import usersRouter from "./routes/users";
 import dashboardRouter from "./routes/dashboard";
 import feeTemplatesRouter from "./routes/feeTemplates";
 import reportsRouter from "./routes/reports";
+import academicYearsRouter from "./routes/academicYears";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -42,6 +43,7 @@ app.use("/api/users", usersRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/fee-templates", feeTemplatesRouter);
 app.use("/api/reports", reportsRouter);
+app.use("/api/academic-years", academicYearsRouter);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

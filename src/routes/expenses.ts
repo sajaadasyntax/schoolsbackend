@@ -94,7 +94,7 @@ router.get("/employees", async (req: Request, res: Response) => {
 router.post("/employees", async (req: Request, res: Response) => {
   try {
     const { role, branchId: userBranch } = req.user!;
-    const { branchId, fullName, jobTitle, phone, email, baseSalary, hireDate, status, notes } = req.body;
+    const { branchId, fullName, jobTitle, phone, email, baseSalary, hireDate, status, notes, category } = req.body;
     const targetBranch = role === "SUPER_ADMIN" ? branchId : userBranch;
     if (!targetBranch || !fullName || !baseSalary) {
       res.status(400).json({ error: "الفرع والاسم والراتب مطلوبة" });
@@ -111,6 +111,7 @@ router.post("/employees", async (req: Request, res: Response) => {
         hireDate: hireDate ? new Date(hireDate) : new Date(),
         status: status || "ACTIVE",
         notes,
+        category: category || "TEACHING",
       },
       include: { branch: true },
     });
@@ -167,11 +168,26 @@ router.get("/salary-payments", async (req: Request, res: Response) => {
 
 router.post("/salary-payments", async (req: Request, res: Response) => {
   try {
-    const { employeeId, amount, month, year, paidDate, notes } = req.body;
+    const {
+      employeeId, amount, month, year, paidDate, notes,
+      baseSalary, allowance1, allowance2, transportAllowance, bonus,
+      loan, leaveDeduction, penalty, subscription, otherDeduction,
+    } = req.body;
+
     if (!employeeId || !amount || !month || !year) {
       res.status(400).json({ error: "الموظف والمبلغ والشهر والسنة مطلوبة" });
       return;
     }
+
+    // Duplicate check
+    const existing = await prisma.salaryPayment.findFirst({
+      where: { employeeId, month: parseInt(month), year: parseInt(year) },
+    });
+    if (existing) {
+      res.status(409).json({ error: "راتب هذا الموظف لهذا الشهر موجود مسبقاً" });
+      return;
+    }
+
     const salaryPayment = await prisma.salaryPayment.create({
       data: {
         employeeId,
@@ -180,6 +196,16 @@ router.post("/salary-payments", async (req: Request, res: Response) => {
         year: parseInt(year),
         paidDate: paidDate ? new Date(paidDate) : new Date(),
         notes,
+        baseSalary: baseSalary ?? 0,
+        allowance1: allowance1 ?? 0,
+        allowance2: allowance2 ?? 0,
+        transportAllowance: transportAllowance ?? 0,
+        bonus: bonus ?? 0,
+        loan: loan ?? 0,
+        leaveDeduction: leaveDeduction ?? 0,
+        penalty: penalty ?? 0,
+        subscription: subscription ?? 0,
+        otherDeduction: otherDeduction ?? 0,
       },
       include: { employee: { include: { branch: true } } },
     });

@@ -10,6 +10,7 @@
     "db:push": "prisma db push",
     "db:seed": "ts-node --project tsconfig.seed.json prisma/seed.ts",
     "db:seed-admin": "ts-node --project tsconfig.seed.json prisma/seed-admin.ts",
+    "db:setup-admin": "npm run db:generate && npm run db:push && npm run db:seed-admin",
     "db:studio": "prisma studio",
     "db:backfill-salaries": "ts-node --project tsconfig.seed.json scripts/backfill-salaries.ts"
   },

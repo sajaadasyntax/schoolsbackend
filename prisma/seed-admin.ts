@@ -1,7 +1,11 @@
-import { PrismaClient, Role } from "@prisma/client";
+import { Prisma, PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+function isMissingTableError(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2021";
+}
 
 async function main() {
   const email = "admin@school.com";
@@ -31,7 +35,16 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e);
+    if (isMissingTableError(e)) {
+      console.error(
+        "Database tables are missing. Apply the schema first, then run this seed again:\n" +
+          "  npm run db:generate\n" +
+          "  npm run db:push\n" +
+          "  npm run db:seed-admin"
+      );
+    } else {
+      console.error(e);
+    }
     process.exit(1);
   })
   .finally(async () => {
