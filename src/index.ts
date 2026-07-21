@@ -16,6 +16,7 @@ import dashboardRouter from "./routes/dashboard";
 import feeTemplatesRouter from "./routes/feeTemplates";
 import reportsRouter from "./routes/reports";
 import academicYearsRouter from "./routes/academicYears";
+import prisma from "./lib/prisma";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -74,8 +75,24 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: "خطأ داخلي في الخادم" });
 });
 
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Backend server running at http://${HOST}:${PORT}`);
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
 });
+
+async function start() {
+  try {
+    await prisma.$connect();
+    console.log("Database connected");
+  } catch (err) {
+    console.error("Database connection failed:", err);
+    process.exit(1);
+  }
+
+  app.listen(PORT, HOST, () => {
+    console.log(`Backend server running at http://${HOST}:${PORT}`);
+  });
+}
+
+start();
 
 export default app;
