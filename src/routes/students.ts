@@ -136,15 +136,34 @@ router.delete("/:id", async (req: Request, res: Response) => {
 router.get("/:id/financial-summary", async (req: Request, res: Response) => {
   try {
     const studentId = req.params.id;
-    const fees = await prisma.fee.findMany({ where: { studentId } });
-    const payments = await prisma.payment.findMany({ where: { studentId } });
+    const academicYear =
+      typeof req.query.academicYear === "string" && req.query.academicYear.trim()
+        ? req.query.academicYear.trim()
+        : undefined;
+
+    const feeWhere: { studentId: string; academicYear?: string } = { studentId };
+    if (academicYear) feeWhere.academicYear = academicYear;
+
+    const fees = await prisma.fee.findMany({ where: feeWhere });
     const installments = await prisma.installment.findMany({ where: { studentId } });
 
     const totalFees = fees.reduce((s, f) => s + Number(f.amount), 0);
-    const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
+    // Use fee.paidAmount so summary matches per-fee remaining (payments must be linked via feeId)
+    const totalPaid = fees.reduce((s, f) => s + Number(f.paidAmount), 0);
     const totalInstallments = installments.reduce((s, i) => s + Number(i.amount), 0);
     const paidInstallments = installments.reduce((s, i) => s + Number(i.paidAmount), 0);
-    const pendingInstallments = installments.filter((i) => i.status !== "PAID").reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
+    const pendingInstallments = installments
+      .filter((i) => i.status !== "PAID")
+      .reduce((s, i) => s + (Number(i.amount) - Number(i.paidAmount)), 0);
+
+    const paidByBucket: Record<string, { due: number; paid: number; remaining: number }> = {};
+    for (const f of fees) {
+      const key = f.bucket || "OTHER";
+      if (!paidByBucket[key]) paidByBucket[key] = { due: 0, paid: 0, remaining: 0 };
+      paidByBucket[key].due += Number(f.amount);
+      paidByBucket[key].paid += Number(f.paidAmount);
+      paidByBucket[key].remaining += Number(f.amount) - Number(f.paidAmount);
+    }
 
     res.json({
       totalFees,
@@ -153,6 +172,8 @@ router.get("/:id/financial-summary", async (req: Request, res: Response) => {
       totalInstallments,
       paidInstallments,
       pendingInstallments,
+      paidByBucket,
+      academicYear: academicYear ?? null,
     });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });

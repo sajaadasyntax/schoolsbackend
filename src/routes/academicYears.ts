@@ -12,31 +12,40 @@ router.get("/", async (_req: Request, res: Response) => {
       orderBy: { createdAt: "desc" },
     });
     res.json(years);
-  } catch {
+  } catch (err) {
+    console.error("list academic years:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
 
-// Create a new academic year; optionally copy fee templates from the current OPEN year
+// Create a new academic year; optionally copy fee templates from another year
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const { name, copyFromYear } = req.body;
-    if (!name) {
+    const rawName = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    const copyFromYear =
+      typeof req.body.copyFromYear === "string" && req.body.copyFromYear.trim()
+        ? req.body.copyFromYear.trim()
+        : undefined;
+
+    if (!rawName) {
       res.status(400).json({ error: "اسم السنة الدراسية مطلوب" });
       return;
     }
+    if (rawName.length > 32) {
+      res.status(400).json({ error: "اسم السنة الدراسية طويل جداً" });
+      return;
+    }
 
-    const year = await prisma.academicYear.create({ data: { name } });
+    const year = await prisma.academicYear.create({ data: { name: rawName } });
 
     if (copyFromYear) {
-      // Copy all ClassFeeTemplate rows from copyFromYear into name
       const templates = await prisma.classFeeTemplate.findMany({
         where: { academicYear: copyFromYear },
       });
 
       for (const t of templates) {
         await prisma.classFeeTemplate.upsert({
-          where: { classId_academicYear: { classId: t.classId, academicYear: name } },
+          where: { classId_academicYear: { classId: t.classId, academicYear: rawName } },
           update: {
             registration: t.registration,
             installment1: t.installment1,
@@ -48,7 +57,7 @@ router.post("/", async (req: Request, res: Response) => {
           },
           create: {
             classId: t.classId,
-            academicYear: name,
+            academicYear: rawName,
             registration: t.registration,
             installment1: t.installment1,
             installment2: t.installment2,
@@ -72,6 +81,7 @@ router.post("/", async (req: Request, res: Response) => {
       res.status(409).json({ error: "هذه السنة الدراسية موجودة مسبقاً" });
       return;
     }
+    console.error("create academic year:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
@@ -84,7 +94,8 @@ router.post("/:id/close", async (req: Request, res: Response) => {
       data: { status: "CLOSED", closedAt: new Date() },
     });
     res.json(year);
-  } catch {
+  } catch (err) {
+    console.error("close academic year:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
@@ -97,7 +108,8 @@ router.post("/:id/reopen", async (req: Request, res: Response) => {
       data: { status: "OPEN", closedAt: null },
     });
     res.json(year);
-  } catch {
+  } catch (err) {
+    console.error("reopen academic year:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });

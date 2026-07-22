@@ -42,8 +42,29 @@ router.post("/fees", async (req: Request, res: Response) => {
       res.status(400).json({ error: "رسوم النقل تُدار عبر صفحة النقل المدرسي فقط" });
       return;
     }
+
+    const year = academicYear || undefined;
+    if (year) {
+      const existing = await prisma.fee.findFirst({
+        where: { studentId, academicYear: year, bucket: resolvedBucket },
+      });
+      if (existing) {
+        res.status(409).json({
+          error: "يوجد رسم بنفس البند والسنة الدراسية لهذا الطالب مسبقاً",
+        });
+        return;
+      }
+    }
+
     const fee = await prisma.fee.create({
-      data: { studentId, bucket: resolvedBucket, amount, description, academicYear },
+      data: {
+        studentId,
+        type: "TUITION",
+        bucket: resolvedBucket,
+        amount,
+        description,
+        academicYear: year,
+      },
     });
     res.status(201).json(fee);
   } catch {

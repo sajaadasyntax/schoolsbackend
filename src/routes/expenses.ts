@@ -76,9 +76,10 @@ router.delete("/:id", async (req: Request, res: Response) => {
 router.get("/employees", async (req: Request, res: Response) => {
   try {
     const { role, branchId } = req.user!;
-    const { status } = req.query;
+    const { status, branchId: queryBranch } = req.query;
     const where: Record<string, unknown> = {};
     if (role !== "SUPER_ADMIN" && branchId) where.branchId = branchId;
+    else if (queryBranch) where.branchId = queryBranch;
     if (status) where.status = status;
     const employees = await prisma.employee.findMany({
       where,
@@ -147,13 +148,15 @@ router.delete("/employees/:id", async (req: Request, res: Response) => {
 router.get("/salary-payments", async (req: Request, res: Response) => {
   try {
     const { role, branchId } = req.user!;
-    const { employeeId, year, month } = req.query;
+    const { employeeId, year, month, branchId: queryBranch } = req.query;
     const where: Record<string, unknown> = {};
     if (employeeId) where.employeeId = employeeId;
     if (year) where.year = parseInt(year as string);
     if (month) where.month = parseInt(month as string);
     if (role !== "SUPER_ADMIN" && branchId) {
       where.employee = { branchId };
+    } else if (queryBranch) {
+      where.employee = { branchId: queryBranch };
     }
     const salaryPayments = await prisma.salaryPayment.findMany({
       where,
