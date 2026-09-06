@@ -18,7 +18,12 @@ router.get("/installments-monthly", async (req: Request, res: Response) => {
 
     const installments = await prisma.installment.findMany({
       where,
-      select: { amount: true, paidAmount: true, dueDate: true },
+      select: {
+        amount: true,
+        paidAmount: true,
+        dueDate: true,
+        student: { select: { id: true, fullName: true, class: { select: { id: true, name: true } } } },
+      },
     });
     const months = Array.from({ length: 12 }, (_, index) => ({
       month: index + 1,
@@ -27,12 +32,38 @@ router.get("/installments-monthly", async (req: Request, res: Response) => {
       remaining: 0,
       count: 0,
     }));
+    const studentMap = new Map<string, {
+      studentId: string;
+      studentName: string;
+      classId: string | null;
+      className: string;
+      due: number;
+      paid: number;
+      remaining: number;
+      count: number;
+    }>();
     for (const installment of installments) {
       const row = months[new Date(installment.dueDate).getMonth()];
       row.due += Number(installment.amount);
       row.paid += Number(installment.paidAmount);
       row.remaining += Number(installment.amount) - Number(installment.paidAmount);
       row.count += 1;
+      const studentKey = installment.student.id;
+      const studentRow = studentMap.get(studentKey) || {
+        studentId: installment.student.id,
+        studentName: installment.student.fullName,
+        classId: installment.student.class?.id || null,
+        className: installment.student.class?.name || "بدون فصل",
+        due: 0,
+        paid: 0,
+        remaining: 0,
+        count: 0,
+      };
+      studentRow.due += Number(installment.amount);
+      studentRow.paid += Number(installment.paidAmount);
+      studentRow.remaining += Number(installment.amount) - Number(installment.paidAmount);
+      studentRow.count += 1;
+      studentMap.set(studentKey, studentRow);
     }
     const totals = months.reduce(
       (acc, row) => ({
@@ -43,7 +74,10 @@ router.get("/installments-monthly", async (req: Request, res: Response) => {
       }),
       { due: 0, paid: 0, remaining: 0, count: 0 }
     );
-    res.json({ year, months, totals });
+    const students = Array.from(studentMap.values()).sort((a, b) =>
+      a.className.localeCompare(b.className, "ar") || a.studentName.localeCompare(b.studentName, "ar")
+    );
+    res.json({ year, months, students, totals });
   } catch (err) {
     console.error("monthly installments report:", err);
     res.status(500).json({ error: "تعذر تحميل تقرير الأقساط الشهري" });
