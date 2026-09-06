@@ -8,29 +8,33 @@ function isMissingTableError(e: unknown): boolean {
 }
 
 async function main() {
-  const email = "admin@school.com";
+  const email = process.env.ADMIN_EMAIL || "admin@school.com";
+  const password = process.env.ADMIN_PASSWORD || "admin123";
+  const name = process.env.ADMIN_NAME || "المدير العام";
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    console.log(`Admin user already exists (${email}), skipping.`);
-    return;
+  if (password.length < 6) {
+    throw new Error("ADMIN_PASSWORD must contain at least 6 characters");
   }
 
-  const hashedPassword = await bcrypt.hash("admin123", 12);
-
-  const admin = await prisma.user.create({
-    data: {
-      name: "المدير العام",
+  const hashedPassword = await bcrypt.hash(password, 12);
+  const admin = await prisma.user.upsert({
+    where: { email },
+    update: {
+      name,
+      password: hashedPassword,
+      role: Role.SUPER_ADMIN,
+      branchId: null,
+    },
+    create: {
+      name,
       email,
       password: hashedPassword,
       role: Role.SUPER_ADMIN,
     },
   });
 
-  console.log(`Admin user created: ${admin.email}`);
-  console.log("Email   : admin@school.com");
-  console.log("Password: admin123");
-  console.log("Change this password after first login!");
+  console.log(`Admin credentials seeded: ${admin.email}`);
+  console.log("Only the admin user was created or updated.");
 }
 
 main()
