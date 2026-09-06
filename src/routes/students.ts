@@ -161,6 +161,33 @@ router.get("/:id/financial-summary", async (req: Request, res: Response) => {
     const feeWhere: { studentId: string; academicYear?: string } = { studentId };
     if (academicYear) feeWhere.academicYear = academicYear;
 
+    const transportSubscription = await prisma.transportSubscription.findUnique({
+      where: { studentId },
+      select: { monthlyFee: true, status: true },
+    });
+    if (academicYear && transportSubscription?.status === "ACTIVE") {
+      const existingTransportFee = await prisma.fee.findFirst({
+        where: { studentId, academicYear, bucket: "TRANSPORT" },
+      });
+      if (!existingTransportFee) {
+        await prisma.fee.create({
+          data: {
+            studentId,
+            academicYear,
+            type: "TRANSPORT",
+            bucket: "TRANSPORT",
+            amount: transportSubscription.monthlyFee,
+            description: "رسوم النقل المدرسي",
+          },
+        });
+      } else if (Number(existingTransportFee.paidAmount) === 0 && Number(existingTransportFee.amount) !== Number(transportSubscription.monthlyFee)) {
+        await prisma.fee.update({
+          where: { id: existingTransportFee.id },
+          data: { amount: transportSubscription.monthlyFee },
+        });
+      }
+    }
+
     const fees = await prisma.fee.findMany({ where: feeWhere });
     const installments = await prisma.installment.findMany({ where: { studentId } });
 

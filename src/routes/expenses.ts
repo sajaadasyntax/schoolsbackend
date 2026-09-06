@@ -21,7 +21,8 @@ router.get("/", async (req: Request, res: Response) => {
       orderBy: { date: "desc" },
     });
     res.json(expenses);
-  } catch {
+  } catch (err) {
+    console.error("list expenses:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
@@ -50,7 +51,8 @@ router.post("/", upload.single("invoice"), async (req: Request, res: Response) =
       include: { branch: true },
     });
     res.status(201).json(expense);
-  } catch {
+  } catch (err) {
+    console.error("create expense:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
