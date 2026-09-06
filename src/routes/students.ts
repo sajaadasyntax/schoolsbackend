@@ -53,6 +53,15 @@ router.post("/", async (req: Request, res: Response) => {
       return;
     }
 
+    const normalizedClassId = typeof classId === "string" && classId.trim() ? classId.trim() : undefined;
+    if (normalizedClassId) {
+      const selectedClass = await prisma.class.findUnique({ where: { id: normalizedClassId } });
+      if (!selectedClass || selectedClass.branchId !== targetBranch) {
+        res.status(400).json({ error: "الفصل غير موجود أو لا يتبع الفرع المحدد" });
+        return;
+      }
+    }
+
     const student = await prisma.student.create({
       data: {
         fullName,
@@ -60,7 +69,7 @@ router.post("/", async (req: Request, res: Response) => {
         parentPhone,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
         gender,
-        classId,
+        classId: normalizedClassId,
         branchId: targetBranch,
         status: status || "ACTIVE",
         notes,
@@ -68,7 +77,8 @@ router.post("/", async (req: Request, res: Response) => {
       include: { branch: true, class: true },
     });
     res.status(201).json(student);
-  } catch {
+  } catch (err) {
+    console.error("create student:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
@@ -120,6 +130,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 router.put("/:id", async (req: Request, res: Response) => {
   try {
     const { fullName, parentName, parentPhone, dateOfBirth, gender, classId, branchId, status, notes } = req.body;
+    const normalizedClassId = typeof classId === "string" && classId.trim() ? classId.trim() : null;
     const student = await prisma.student.update({
       where: { id: req.params.id },
       data: {
@@ -128,7 +139,7 @@ router.put("/:id", async (req: Request, res: Response) => {
         parentPhone,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
         gender,
-        classId,
+        classId: normalizedClassId,
         branchId,
         status,
         notes,
@@ -136,7 +147,8 @@ router.put("/:id", async (req: Request, res: Response) => {
       include: { branch: true, class: true },
     });
     res.json(student);
-  } catch {
+  } catch (err) {
+    console.error("update student:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
