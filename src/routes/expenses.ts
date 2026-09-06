@@ -198,39 +198,42 @@ router.post("/salary-payments", requireRole("SUPER_ADMIN", "BRANCH_ADMIN"), asyn
       return;
     }
 
-    const salaryPayment = await prisma.salaryPayment.create({
-      data: {
-        employeeId,
-        amount,
-        month: parseInt(month),
-        year: parseInt(year),
-        paidDate: paidDate ? new Date(paidDate) : new Date(),
-        notes,
-        baseSalary: baseSalary ?? 0,
-        allowance1: allowance1 ?? 0,
-        allowance2: allowance2 ?? 0,
-        transportAllowance: transportAllowance ?? 0,
-        bonus: bonus ?? 0,
-        loan: loan ?? 0,
-        leaveDeduction: leaveDeduction ?? 0,
-        penalty: penalty ?? 0,
-        subscription: subscription ?? 0,
-        otherDeduction: otherDeduction ?? 0,
-      },
-      include: { employee: { include: { branch: true } } },
-    });
-    if (Number(loan ?? 0) > 0) {
-      await prisma.expense.create({
+    const salaryPayment = await prisma.$transaction(async (tx) => {
+      const created = await tx.salaryPayment.create({
         data: {
-          branchId: salaryPayment.employee.branchId,
-          category: "سلفيات",
-          description: `سلفية ${salaryPayment.employee.fullName} - ${month}/${year}`,
-          amount: loan,
-          date: salaryPayment.paidDate,
-          notes: notes || undefined,
+          employeeId,
+          amount,
+          month: parseInt(month),
+          year: parseInt(year),
+          paidDate: paidDate ? new Date(paidDate) : new Date(),
+          notes,
+          baseSalary: baseSalary ?? 0,
+          allowance1: allowance1 ?? 0,
+          allowance2: allowance2 ?? 0,
+          transportAllowance: transportAllowance ?? 0,
+          bonus: bonus ?? 0,
+          loan: loan ?? 0,
+          leaveDeduction: leaveDeduction ?? 0,
+          penalty: penalty ?? 0,
+          subscription: subscription ?? 0,
+          otherDeduction: otherDeduction ?? 0,
         },
+        include: { employee: { include: { branch: true } } },
       });
-    }
+      if (Number(loan ?? 0) > 0) {
+        await tx.expense.create({
+          data: {
+            branchId: created.employee.branchId,
+            category: "سلفيات",
+            description: `سلفية ${created.employee.fullName} - ${month}/${year}`,
+            amount: loan,
+            date: created.paidDate,
+            notes: notes || undefined,
+          },
+        });
+      }
+      return created;
+    });
     res.status(201).json(salaryPayment);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });

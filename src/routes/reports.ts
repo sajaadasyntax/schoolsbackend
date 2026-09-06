@@ -5,6 +5,51 @@ import { requireAuth } from "../middleware/auth";
 const router = Router();
 router.use(requireAuth);
 
+// GET /api/reports/installments-monthly?year=&branchId=
+router.get("/installments-monthly", async (req: Request, res: Response) => {
+  try {
+    const { role, branchId: userBranch } = req.user!;
+    const year = Number(req.query.year) || new Date().getFullYear();
+    const targetBranch = role === "SUPER_ADMIN" ? (req.query.branchId as string | undefined) : userBranch;
+    const where: Record<string, unknown> = {
+      dueDate: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
+    };
+    if (targetBranch) where.student = { branchId: targetBranch };
+
+    const installments = await prisma.installment.findMany({
+      where,
+      select: { amount: true, paidAmount: true, dueDate: true },
+    });
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      due: 0,
+      paid: 0,
+      remaining: 0,
+      count: 0,
+    }));
+    for (const installment of installments) {
+      const row = months[new Date(installment.dueDate).getMonth()];
+      row.due += Number(installment.amount);
+      row.paid += Number(installment.paidAmount);
+      row.remaining += Number(installment.amount) - Number(installment.paidAmount);
+      row.count += 1;
+    }
+    const totals = months.reduce(
+      (acc, row) => ({
+        due: acc.due + row.due,
+        paid: acc.paid + row.paid,
+        remaining: acc.remaining + row.remaining,
+        count: acc.count + row.count,
+      }),
+      { due: 0, paid: 0, remaining: 0, count: 0 }
+    );
+    res.json({ year, months, totals });
+  } catch (err) {
+    console.error("monthly installments report:", err);
+    res.status(500).json({ error: "تعذر تحميل تقرير الأقساط الشهري" });
+  }
+});
+
 // GET /api/reports/profit-loss?startDate=&endDate=&branchId=
 // Cash-basis profit and loss report for the requested period.
 router.get("/profit-loss", async (req: Request, res: Response) => {
