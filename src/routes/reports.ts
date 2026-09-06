@@ -5,6 +5,73 @@ import { requireAuth } from "../middleware/auth";
 const router = Router();
 router.use(requireAuth);
 
+// GET /api/reports/profit-loss?startDate=&endDate=&branchId=
+// Cash-basis profit and loss report for the requested period.
+router.get("/profit-loss", async (req: Request, res: Response) => {
+  try {
+    const { role, branchId: userBranch } = req.user!;
+    const today = new Date();
+    const defaultStart = new Date(today.getFullYear(), 0, 1);
+    const startDate = typeof req.query.startDate === "string" && req.query.startDate
+      ? new Date(`${req.query.startDate}T00:00:00`)
+      : defaultStart;
+    const endDate = typeof req.query.endDate === "string" && req.query.endDate
+      ? new Date(`${req.query.endDate}T23:59:59.999`)
+      : today;
+    const targetBranch = role === "SUPER_ADMIN" ? (req.query.branchId as string | undefined) : userBranch;
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate > endDate) {
+      res.status(400).json({ error: "نطاق التاريخ غير صالح" });
+      return;
+    }
+
+    const dateFilter = { gte: startDate, lte: endDate };
+    const paymentWhere: Record<string, unknown> = { paymentDate: dateFilter };
+    const expenseWhere: Record<string, unknown> = { date: dateFilter };
+    const salaryWhere: Record<string, unknown> = { paidDate: dateFilter };
+    if (targetBranch) {
+      paymentWhere.student = { branchId: targetBranch };
+      expenseWhere.branchId = targetBranch;
+      salaryWhere.employee = { branchId: targetBranch };
+    }
+
+    const [payments, expenses, salaries] = await Promise.all([
+      prisma.payment.findMany({ where: paymentWhere, select: { amount: true } }),
+      prisma.expense.findMany({ where: expenseWhere, select: { category: true, amount: true } }),
+      prisma.salaryPayment.findMany({ where: salaryWhere, select: { amount: true, loan: true } }),
+    ]);
+
+    const collected = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const directExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
+    const salariesPaid = salaries.reduce((sum, salary) => sum + Number(salary.amount), 0);
+    const totalExpenses = directExpenses + salariesPaid;
+    const categories: Record<string, number> = {};
+    for (const expense of expenses) {
+      categories[expense.category] = (categories[expense.category] || 0) + Number(expense.amount);
+    }
+    if (salariesPaid) categories["رواتب"] = (categories["رواتب"] || 0) + salariesPaid;
+
+    res.json({
+      startDate,
+      endDate,
+      collected,
+      directExpenses,
+      salariesPaid,
+      totalExpenses,
+      profit: collected - totalExpenses,
+      categories,
+      records: {
+        payments: payments.length,
+        expenses: expenses.length,
+        salaries: salaries.length,
+      },
+    });
+  } catch (err) {
+    console.error("profit-loss report:", err);
+    res.status(500).json({ error: "تعذر تحميل تقرير الأرباح والخسائر" });
+  }
+});
+
 // GET /api/reports/class-fees?branchId=&academicYear=
 // Returns per-class totals for each fee bucket — mirrors تقرير.xlsx layout
 router.get("/class-fees", async (req: Request, res: Response) => {
@@ -23,7 +90,7 @@ router.get("/class-fees", async (req: Request, res: Response) => {
       include: {
         branch: true,
         students: {
-          where: { status: "ACTIVE" },
+          where: { status: { in: ["ACTIVE", "ARCHIVED"] } },
           include: {
             fees: { where: feeWhere },
             transportSubscription: true,
@@ -139,7 +206,7 @@ router.get("/student-fees", async (req: Request, res: Response) => {
     const targetBranch = role === "SUPER_ADMIN" ? (queryBranch as string | undefined) : userBranch;
     const year = (academicYear as string) || undefined;
 
-    const where: Record<string, unknown> = { status: "ACTIVE" };
+    const where: Record<string, unknown> = { status: { in: ["ACTIVE", "ARCHIVED"] } };
     if (targetBranch) where.branchId = targetBranch;
     if (classId) where.classId = classId;
 
