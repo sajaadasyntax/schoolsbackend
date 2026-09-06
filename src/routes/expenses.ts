@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import prisma from "../lib/prisma";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
+import { upload } from "../lib/upload";
 
 const router = Router();
 router.use(requireAuth);
@@ -8,14 +9,15 @@ router.use(requireAuth);
 router.get("/", async (req: Request, res: Response) => {
   try {
     const { role, branchId } = req.user!;
-    const { category, branchId: queryBranch } = req.query;
+    const { category, branchId: queryBranch, classId } = req.query;
     const where: Record<string, unknown> = {};
     if (role !== "SUPER_ADMIN" && branchId) where.branchId = branchId;
     if (queryBranch && role === "SUPER_ADMIN") where.branchId = queryBranch;
     if (category) where.category = category;
+    if (classId) where.classId = classId;
     const expenses = await prisma.expense.findMany({
       where,
-      include: { branch: true },
+      include: { branch: true, class: true },
       orderBy: { date: "desc" },
     });
     res.json(expenses);
@@ -24,10 +26,10 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", upload.single("invoice"), async (req: Request, res: Response) => {
   try {
     const { role, branchId: userBranch } = req.user!;
-    const { branchId, category, description, amount, date, notes } = req.body;
+    const { branchId, classId, category, description, amount, date, notes } = req.body;
     const targetBranch = role === "SUPER_ADMIN" ? branchId : userBranch;
     if (!targetBranch || !category || !amount) {
       res.status(400).json({ error: "الفرع والفئة والمبلغ مطلوبة" });
@@ -36,11 +38,14 @@ router.post("/", async (req: Request, res: Response) => {
     const expense = await prisma.expense.create({
       data: {
         branchId: targetBranch,
+        classId: classId || undefined,
         category,
         description,
         amount,
         date: date ? new Date(date) : new Date(),
         notes,
+        invoicePath: req.file ? `/uploads/${req.file.filename}` : null,
+        invoiceOriginalName: req.file?.originalname ?? null,
       },
       include: { branch: true },
     });
@@ -52,11 +57,11 @@ router.post("/", async (req: Request, res: Response) => {
 
 router.put("/:id", async (req: Request, res: Response) => {
   try {
-    const { category, description, amount, date, notes } = req.body;
+    const { classId, category, description, amount, date, notes } = req.body;
     const expense = await prisma.expense.update({
       where: { id: req.params.id },
-      data: { category, description, amount, date: date ? new Date(date) : undefined, notes },
-      include: { branch: true },
+      data: { classId: classId || undefined, category, description, amount, date: date ? new Date(date) : undefined, notes },
+      include: { branch: true, class: true },
     });
     res.json(expense);
   } catch {
@@ -169,7 +174,7 @@ router.get("/salary-payments", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/salary-payments", async (req: Request, res: Response) => {
+router.post("/salary-payments", requireRole("SUPER_ADMIN", "BRANCH_ADMIN"), async (req: Request, res: Response) => {
   try {
     const {
       employeeId, amount, month, year, paidDate, notes,
@@ -212,6 +217,18 @@ router.post("/salary-payments", async (req: Request, res: Response) => {
       },
       include: { employee: { include: { branch: true } } },
     });
+    if (Number(loan ?? 0) > 0) {
+      await prisma.expense.create({
+        data: {
+          branchId: salaryPayment.employee.branchId,
+          category: "سلفيات",
+          description: `سلفية ${salaryPayment.employee.fullName} - ${month}/${year}`,
+          amount: loan,
+          date: salaryPayment.paidDate,
+          notes: notes || undefined,
+        },
+      });
+    }
     res.status(201).json(salaryPayment);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });

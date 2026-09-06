@@ -84,12 +84,14 @@ router.delete("/fees/:id", async (req: Request, res: Response) => {
 router.get("/", async (req: Request, res: Response) => {
   try {
     const { role, branchId } = req.user!;
-    const { studentId, method } = req.query;
+    const { studentId, method, branchId: queryBranch, classId } = req.query;
     const where: Record<string, unknown> = {};
     if (studentId) where.studentId = studentId;
     if (method) where.method = method;
     if (role !== "SUPER_ADMIN" && branchId) {
-      where.student = { branchId };
+      where.student = { branchId, ...(classId ? { classId } : {}) };
+    } else if (queryBranch || classId) {
+      where.student = { ...(queryBranch ? { branchId: queryBranch } : {}), ...(classId ? { classId } : {}) };
     }
     const payments = await prisma.payment.findMany({
       where,

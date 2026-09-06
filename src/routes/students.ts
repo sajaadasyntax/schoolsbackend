@@ -94,6 +94,23 @@ router.get("/:id", async (req: Request, res: Response) => {
       res.status(404).json({ error: "الطالب غير موجود" });
       return;
     }
+
+    if (student.transportSubscription) {
+      const transportFee = student.fees.find((fee) => fee.bucket === "TRANSPORT");
+      if (!transportFee) {
+        const createdTransportFee = await prisma.fee.create({
+          data: {
+            studentId: student.id,
+            type: "TRANSPORT",
+            bucket: "TRANSPORT",
+            amount: student.transportSubscription.monthlyFee,
+            description: "رسوم النقل المدرسي",
+            academicYear: student.class?.academicYear || "2024-2025",
+          },
+        });
+        student.fees.push(createdTransportFee);
+      }
+    }
     res.json(student);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });

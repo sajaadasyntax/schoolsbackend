@@ -41,18 +41,42 @@ router.post("/", async (req: Request, res: Response) => {
       return;
     }
 
-    const subscription = await prisma.transportSubscription.create({
-      data: {
-        studentId,
-        route,
-        monthlyFee,
-        startDate: startDate ? new Date(startDate) : new Date(),
-        endDate: endDate ? new Date(endDate) : undefined,
-        notes,
-      },
-      include: {
-        student: { select: { fullName: true, branch: true, class: true } },
-      },
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { class: { select: { academicYear: true } }, fullName: true },
+    });
+    if (!student) {
+      res.status(404).json({ error: "الطالب غير موجود" });
+      return;
+    }
+
+    const subscription = await prisma.$transaction(async (tx) => {
+      const created = await tx.transportSubscription.create({
+        data: {
+          studentId,
+          route,
+          monthlyFee,
+          startDate: startDate ? new Date(startDate) : new Date(),
+          endDate: endDate ? new Date(endDate) : undefined,
+          notes,
+        },
+        include: {
+          student: { select: { fullName: true, branch: true, class: true } },
+        },
+      });
+
+      await tx.fee.create({
+        data: {
+          studentId,
+          type: "TRANSPORT",
+          bucket: "TRANSPORT",
+          amount: monthlyFee,
+          description: "رسوم النقل المدرسي",
+          academicYear: student.class?.academicYear || "2024-2025",
+        },
+      });
+
+      return created;
     });
     res.status(201).json(subscription);
   } catch {
@@ -63,19 +87,30 @@ router.post("/", async (req: Request, res: Response) => {
 router.put("/:id", async (req: Request, res: Response) => {
   try {
     const { route, monthlyFee, startDate, endDate, status, notes } = req.body;
-    const subscription = await prisma.transportSubscription.update({
-      where: { id: req.params.id },
-      data: {
-        route,
-        monthlyFee,
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
-        status,
-        notes,
-      },
-      include: {
-        student: { select: { fullName: true, branch: true, class: true } },
-      },
+    const subscription = await prisma.$transaction(async (tx) => {
+      const updated = await tx.transportSubscription.update({
+        where: { id: req.params.id },
+        data: {
+          route,
+          monthlyFee,
+          startDate: startDate ? new Date(startDate) : undefined,
+          endDate: endDate ? new Date(endDate) : undefined,
+          status,
+          notes,
+        },
+        include: {
+          student: { select: { fullName: true, branch: true, class: true } },
+        },
+      });
+
+      if (monthlyFee !== undefined) {
+        await tx.fee.updateMany({
+          where: { studentId: updated.studentId, bucket: "TRANSPORT", paidAmount: 0 },
+          data: { amount: monthlyFee },
+        });
+      }
+
+      return updated;
     });
     res.json(subscription);
   } catch {

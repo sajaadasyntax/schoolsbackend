@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import prisma from "../lib/prisma";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 
 const router = Router();
 router.use(requireAuth);
@@ -87,13 +87,20 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 // Close a year
-router.post("/:id/close", async (req: Request, res: Response) => {
+router.post("/:id/close", requireRole("SUPER_ADMIN"), async (req: Request, res: Response) => {
   try {
-    const year = await prisma.academicYear.update({
-      where: { id: req.params.id },
-      data: { status: "CLOSED", closedAt: new Date() },
+    const result = await prisma.$transaction(async (tx) => {
+      const year = await tx.academicYear.update({
+        where: { id: req.params.id },
+        data: { status: "CLOSED", closedAt: new Date() },
+      });
+      const archived = await tx.student.updateMany({
+        where: { status: "ACTIVE" },
+        data: { status: "ARCHIVED" },
+      });
+      return { year, archivedStudents: archived.count };
     });
-    res.json(year);
+    res.json(result);
   } catch (err) {
     console.error("close academic year:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -101,7 +108,7 @@ router.post("/:id/close", async (req: Request, res: Response) => {
 });
 
 // Reopen a year (admin safety valve)
-router.post("/:id/reopen", async (req: Request, res: Response) => {
+router.post("/:id/reopen", requireRole("SUPER_ADMIN"), async (req: Request, res: Response) => {
   try {
     const year = await prisma.academicYear.update({
       where: { id: req.params.id },
