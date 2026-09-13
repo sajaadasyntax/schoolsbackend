@@ -17,7 +17,7 @@ router.get("/stats", async (req: Request, res: Response) => {
       paymentAggregate,
       expenseAggregate,
       salaryAggregate,
-      installments,
+      feeAggregate,
       branches,
     ] = await Promise.all([
       prisma.student.count({ where: isBranchScoped ? { branchId: branchId!, status: "ACTIVE" } : { status: "ACTIVE" } }),
@@ -35,11 +35,9 @@ router.get("/stats", async (req: Request, res: Response) => {
         where: isBranchScoped ? { employee: { branchId: branchId! } } : undefined,
         _sum: { amount: true },
       }),
-      prisma.installment.findMany({
-        where: isBranchScoped
-          ? { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] }, student: { branchId: branchId! } }
-          : { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
-        select: { amount: true, paidAmount: true },
+      prisma.fee.aggregate({
+        where: isBranchScoped ? { student: { branchId: branchId! } } : undefined,
+        _sum: { amount: true, paidAmount: true },
       }),
       prisma.branch.findMany({
         where: isBranchScoped ? { id: branchId! } : undefined,
@@ -54,10 +52,9 @@ router.get("/stats", async (req: Request, res: Response) => {
     const totalSalaries = Number(salaryAggregate._sum.amount ?? 0);
     const totalCosts = totalExpenses + totalSalaries;
     const netProfit = totalRevenue - totalCosts;
-    const outstanding = installments.reduce(
-      (s, i) => s + (Number(i.amount) - Number(i.paidAmount)),
-      0
-    );
+    const totalFees = Number(feeAggregate._sum.amount ?? 0);
+    const totalPaidFees = Number(feeAggregate._sum.paidAmount ?? 0);
+    const outstanding = Math.max(0, totalFees - totalPaidFees);
 
     const branchesWithFinance = await Promise.all(
       branches.map(async (b) => {
