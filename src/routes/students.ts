@@ -29,7 +29,7 @@ router.get("/", async (req: Request, res: Response) => {
         branch: true,
         class: true,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ fullName: "asc" }, { createdAt: "desc" }],
     });
     res.json(students);
   } catch {

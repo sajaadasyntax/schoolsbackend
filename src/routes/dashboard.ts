@@ -14,20 +14,26 @@ router.get("/stats", async (req: Request, res: Response) => {
       totalStudents,
       totalEmployees,
       totalBranches,
-      payments,
-      expenses,
-      salaries,
+      paymentAggregate,
+      expenseAggregate,
+      salaryAggregate,
       installments,
       branches,
     ] = await Promise.all([
       prisma.student.count({ where: isBranchScoped ? { branchId: branchId!, status: "ACTIVE" } : { status: "ACTIVE" } }),
       prisma.employee.count({ where: isBranchScoped ? { branchId: branchId!, status: "ACTIVE" } : { status: "ACTIVE" } }),
       prisma.branch.count({ where: isBranchScoped ? { id: branchId! } : undefined }),
-      prisma.payment.findMany({ where: isBranchScoped ? { student: { branchId: branchId! } } : undefined, select: { amount: true } }),
-      prisma.expense.findMany({ where: isBranchScoped ? { branchId: branchId! } : undefined, select: { amount: true } }),
-      prisma.salaryPayment.findMany({
+      prisma.payment.aggregate({
+        where: isBranchScoped ? { student: { branchId: branchId! } } : undefined,
+        _sum: { amount: true },
+      }),
+      prisma.expense.aggregate({
+        where: isBranchScoped ? { branchId: branchId! } : undefined,
+        _sum: { amount: true },
+      }),
+      prisma.salaryPayment.aggregate({
         where: isBranchScoped ? { employee: { branchId: branchId! } } : undefined,
-        select: { amount: true },
+        _sum: { amount: true },
       }),
       prisma.installment.findMany({
         where: isBranchScoped
@@ -43,9 +49,9 @@ router.get("/stats", async (req: Request, res: Response) => {
       }),
     ]);
 
-    const totalRevenue = payments.reduce((s, p) => s + Number(p.amount), 0);
-    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
-    const totalSalaries = salaries.reduce((s, sal) => s + Number(sal.amount), 0);
+    const totalRevenue = Number(paymentAggregate._sum.amount ?? 0);
+    const totalExpenses = Number(expenseAggregate._sum.amount ?? 0);
+    const totalSalaries = Number(salaryAggregate._sum.amount ?? 0);
     const totalCosts = totalExpenses + totalSalaries;
     const netProfit = totalRevenue - totalCosts;
     const outstanding = installments.reduce(
